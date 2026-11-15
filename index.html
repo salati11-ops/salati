@@ -173,6 +173,20 @@ button.avatar{border:0;padding:0;cursor:pointer}
 
 /* lists */
 .list{display:flex;flex-direction:column;gap:10px}
+.hero{position:relative}
+.zoombtn{position:absolute;left:10px;bottom:10px;width:40px;height:40px;border-radius:12px;border:0;background:rgba(0,0,0,.5);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:2}
+.zoombtn svg{width:20px;height:20px}
+.viewer{position:fixed;inset:0;z-index:210;background:#000;color:#fff}
+.viewer .vstage{position:absolute;inset:0;overflow:hidden;touch-action:none;display:grid;place-items:center}
+.viewer .vstage img{width:100%;height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none;transform-origin:center;max-width:none}
+.viewer .vclose,.viewer .vnav{width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.2);color:#fff;display:grid;place-items:center;cursor:pointer}
+.viewer .vclose{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px}
+.viewer .vnav{position:absolute;top:50%;margin-top:-22px}
+.viewer .vprev{right:10px}
+.viewer .vnext{left:10px}
+.viewer .vnext svg{transform:scaleX(-1)}
+.viewer svg{width:22px;height:22px}
+.viewer .vcount{position:absolute;top:calc(env(safe-area-inset-top,0px) + 24px);left:0;right:0;text-align:center;font-size:14px;opacity:.9;pointer-events:none}
 .crop{position:fixed;inset:0;z-index:200;background:#0b0f10;color:#fff;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 .crop .bar{padding:14px 16px 6px;text-align:center;font-weight:600;font-size:15px}
 .crop .stagewrap{flex:1;min-height:0;display:grid;place-items:center;padding:10px}
@@ -273,6 +287,7 @@ var ICONS={
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
   tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
   phoneCall:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  expand:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/>',
   share:'<path d="M14 4l7 7-7 7v-4c-6 0-9 2-11 6 1-7 4-11 11-12z"/>',
   flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -291,7 +306,7 @@ var CONDS={new:'جديد',like:'شبه جديد',used:'مستعمل'};
 /* ---------- الحالة ---------- */
 var sb=null;
 var S={user:null,listings:[],favs:{},convs:[],view:'home',detail:null,q:'',gov:'',cat:'',sort:'new',
-  photos:[],step:'login',pw:false,confirmDel:null,showPhone:{},imgIdx:0,from:'home',chat:null,msgs:[],busy:false,reportOpen:null,reported:{},adminConfirm:null,reports:[],editId:null};
+  photos:[],step:'login',pw:false,confirmDel:null,showPhone:{},imgIdx:0,from:'home',chat:null,msgs:[],busy:false,reportOpen:null,reported:{},adminConfirm:null,reports:[],editId:null,viewed:{}};
 var pollT=null;
 
 /* ---------- أدوات ---------- */
@@ -342,7 +357,7 @@ function go(v,extra){
 function norm(r){
   var p=r.seller||{};
   return {id:r.id,title:r.title,cat:r.category,cond:r.condition,price:r.price,gov:r.governorate,desc:r.description,
-    photos:(r.photos||[]).filter(okPhoto),sold:r.sold,ts:Date.parse(r.created_at),owner:r.owner,
+    photos:(r.photos||[]).filter(okPhoto),sold:r.sold,views:r.views||0,ts:Date.parse(r.created_at),owner:r.owner,
     seller:p.username||'—',avatar:p.avatar_url||'',phone:p.phone?fmtPhone(p.phone):'',phoneRaw:p.phone||'',mine:!!(S.user&&r.owner===S.user.id)};
 }
 async function loadListings(){
@@ -490,7 +505,7 @@ function renderDetail(){
   if(!mine && l.phone) phoneBlock='<div class="hint" style="margin-top:12px">رقم البائع للتواصل</div><div class="phoneshow" style="margin-top:6px"><b>'+esc(l.phone)+'</b><button class="btn sm" data-act="copy" data-v="'+esc(l.phone)+'">'+ic('copy')+'نسخ</button></div>';
   var own='';
   if(mine){
-    own='<div class="panel"><h2>هذا إعلانك</h2><div class="acts">'
+    own='<div class="panel"><h2>هذا إعلانك</h2><div class="hint" style="margin-bottom:10px">'+(l.views?'شاهد إعلانك '+l.views+' شخص':'ما شافه أحد للحين')+'</div><div class="acts">'
      +'<button class="btn sm" data-act="editad" data-id="'+l.id+'">'+ic('edit')+'تعديل</button>'
      +'<button class="btn sm" data-act="sold" data-id="'+l.id+'">'+ic('check')+(l.sold?'رجّعه للبيع':'علّمه انباع')+'</button>'
      +(S.confirmDel===l.id?'<button class="btn sm danger" data-act="del2" data-id="'+l.id+'">تأكيد الحذف</button><button class="btn sm" data-act="delno">إلغاء</button>':'<button class="btn sm danger" data-act="del" data-id="'+l.id+'">'+ic('trash')+'حذف</button>')
@@ -498,7 +513,7 @@ function renderDetail(){
   }
   mount('<div class="pagehead"><button class="iconbtn" data-act="back" aria-label="رجوع">'+ic('back')+'</button><h1>تفاصيل الإعلان</h1>'
    +'<button class="iconbtn" data-act="fav" data-id="'+l.id+'" aria-label="مفضلة" aria-pressed="'+(S.favs[l.id]?'true':'false')+'" style="'+(S.favs[l.id]?'color:var(--danger)':'')+'">'+ic('heart')+'</button></div>'
-   +'<div class="hero">'+hero+'</div>'+gal
+   +'<div class="hero">'+hero+(l.photos.length?'<button type="button" class="zoombtn" data-act="zoomimg" aria-label="تكبير الصورة">'+ic('expand')+'</button>':'')+'</div>'+gal
    +'<div class="dprice">'+money(l.price)+' د.ع</div>'
    +'<h2 class="dtitle">'+esc(l.title)+'</h2>'
    +'<div class="tags"><span class="tag">'+CONDS[l.cond]+'</span><span class="tag">'+c.n+'</span><span class="tag">'+esc(l.gov)+'</span><span class="tag">'+ago(l.ts)+'</span>'+(l.sold?'<span class="tag warn">انباع</span>':'')+'</div>'
@@ -537,6 +552,68 @@ function renderPhotos(){
   var h=S.photos.map(function(x,i){return '<div class="ph"><img src="'+x.url+'" alt=""><button type="button" data-act="rmph" data-i="'+i+'" aria-label="حذف الصورة">'+ic('x')+'</button></div>';}).join('');
   if(S.photos.length<4) h+='<button type="button" class="ph add" data-act="pick">'+ic('camera')+'<span>أضف صورة</span></button>';
   p.innerHTML=h;
+}
+function openViewer(photos,start){
+  var i=start||0, z=1, tx=0, ty=0;
+  var ov=document.createElement('div'); ov.className='viewer'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true'); ov.setAttribute('aria-label','عرض الصورة');
+  ov.innerHTML='<div class="vstage"><img alt=""></div><button type="button" class="vclose" data-v="close" aria-label="إغلاق">'+ic('x')+'</button>'
+    +(photos.length>1?'<div class="vcount"></div><button type="button" class="vnav vprev" data-v="prev" aria-label="السابقة">'+ic('back')+'</button><button type="button" class="vnav vnext" data-v="next" aria-label="التالية">'+ic('back')+'</button>':'');
+  document.body.appendChild(ov);
+  var prevOv=document.body.style.overflow; document.body.style.overflow='hidden';
+  var st=ov.querySelector('.vstage'), img=st.querySelector('img'), cnt=ov.querySelector('.vcount');
+  function clamp(v,a,b){return Math.min(b,Math.max(a,v));}
+  function apply(){
+    var mx=(z-1)*st.clientWidth/2, my=(z-1)*st.clientHeight/2;
+    tx=clamp(tx,-mx,mx); ty=clamp(ty,-my,my);
+    img.style.transform='translate('+tx+'px,'+ty+'px) scale('+z+')';
+  }
+  function show(n){
+    i=(n+photos.length)%photos.length; z=1; tx=0; ty=0;
+    img.src=photos[i]; if(cnt) cnt.textContent=(i+1)+' / '+photos.length; apply();
+  }
+  var pts={}, last=0, sx=0, moved=false, lastTap=0;
+  st.addEventListener('pointerdown',function(e){
+    try{st.setPointerCapture(e.pointerId);}catch(x){}
+    pts[e.pointerId]={x:e.clientX,y:e.clientY}; last=0;
+    if(Object.keys(pts).length===1){ sx=e.clientX; moved=false; }
+  });
+  st.addEventListener('pointermove',function(e){
+    var p=pts[e.pointerId]; if(!p) return;
+    var ids=Object.keys(pts);
+    if(ids.length===1){
+      if(Math.abs(e.clientX-sx)>8) moved=true;
+      if(z>1){ tx+=e.clientX-p.x; ty+=e.clientY-p.y; apply(); }
+      p.x=e.clientX; p.y=e.clientY;
+    } else {
+      moved=true; p.x=e.clientX; p.y=e.clientY;
+      var a=pts[ids[0]], b=pts[ids[1]], d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(last){ z=clamp(z*d/last,1,5); if(z===1){tx=0;ty=0;} apply(); }
+      last=d;
+    }
+  });
+  function up(e){
+    var p=pts[e.pointerId]; if(!p) return;
+    var single=Object.keys(pts).length===1;
+    delete pts[e.pointerId]; last=0;
+    if(!single) return;
+    var dx=e.clientX-sx;
+    if(z===1 && photos.length>1 && Math.abs(dx)>60){ show(dx<0?i+1:i-1); return; }
+    if(!moved){
+      var now=Date.now();
+      if(now-lastTap<300){ z=(z>1?1:2.5); tx=0; ty=0; apply(); lastTap=0; } else lastTap=now;
+    }
+  }
+  st.addEventListener('pointerup',up); st.addEventListener('pointercancel',function(e){delete pts[e.pointerId];last=0;});
+  st.addEventListener('wheel',function(e){ e.preventDefault(); z=clamp(z*(e.deltaY<0?1.15:0.87),1,5); if(z===1){tx=0;ty=0;} apply(); },{passive:false});
+  function close(){ document.removeEventListener('keydown',key); document.body.style.overflow=prevOv; ov.remove(); }
+  function key(e){ if(e.key==='Escape') close(); }
+  document.addEventListener('keydown',key);
+  ov.addEventListener('click',function(e){
+    var b=e.target.closest('[data-v]'); if(!b) return;
+    var v=b.getAttribute('data-v');
+    if(v==='close') close(); else if(v==='next') show(i+1); else if(v==='prev') show(i-1);
+  });
+  show(i);
 }
 function loadImg(file){
   return new Promise(function(res){
@@ -812,12 +889,16 @@ document.addEventListener('click',async function(e){
   }
   try{
   switch(a){
-    case 'open': if(S.view!=='detail'&&S.view!=='chat') S.from=S.view; S.detail=id; S.imgIdx=0; S.confirmDel=null; S.reportOpen=null; go('detail'); break;
+    case 'open': if(S.view!=='detail'&&S.view!=='chat') S.from=S.view; S.detail=id; S.imgIdx=0; S.confirmDel=null; S.reportOpen=null; go('detail');
+      var lv=getL(id);
+      if(lv&&!lv.mine&&!S.viewed[id]){ S.viewed[id]=1; sb.rpc('record_view',{lid:id}).then(function(){},function(){}); }
+      break;
     case 'back':
       if(S.view==='chat') go(S.from==='chats'?'chats':'detail');
       else go(S.from&&S.from!=='detail'&&S.from!=='chat'?S.from:'home');
       break;
     case 'tab': if(S.view!=='add'||S.editId) S.photos=[]; S.editId=null; go(el.getAttribute('data-v')); break;
+    case 'zoomimg': var lz=getL(S.detail); if(lz&&lz.photos.length) openViewer(lz.photos,S.imgIdx||0); break;
     case 'editad':
       var le=getL(id); if(!le) break;
       S.editId=id; S.photos=le.photos.map(function(u){return {url:u,old:true};}); go('add'); break;
