@@ -171,6 +171,10 @@ button.avatar{border:0;padding:0;cursor:pointer}
 
 /* lists */
 .list{display:flex;flex-direction:column;gap:10px}
+.sharerow{display:flex;gap:12px;align-items:center;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:14px;text-align:start;cursor:pointer;font:inherit;color:var(--ink);box-shadow:var(--shadow)}
+.sharerow .ci{width:42px;height:42px;border-radius:50%;background:var(--chip);color:var(--accent);display:grid;place-items:center;flex:none}
+.sharerow .ci svg{width:20px;height:20px}
+.sharerow b{font-weight:600;font-size:16px}
 .li{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;min-width:0;text-align:start;width:100%}
 .li .art{width:64px;height:64px;aspect-ratio:auto;border-radius:10px;flex:none}
 .li .art svg{width:50%;height:50%}
@@ -253,6 +257,8 @@ var ICONS={
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
   tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
   phoneCall:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  share:'<path d="M14 4l7 7-7 7v-4c-6 0-9 2-11 6 1-7 4-11 11-12z"/>',
+  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>'
 };
 var CATS=[
@@ -268,7 +274,7 @@ var CONDS={new:'جديد',like:'شبه جديد',used:'مستعمل'};
 /* ---------- الحالة ---------- */
 var sb=null;
 var S={user:null,listings:[],favs:{},convs:[],view:'home',detail:null,q:'',gov:'',cat:'',sort:'new',
-  photos:[],step:'login',pw:false,confirmDel:null,showPhone:{},imgIdx:0,from:'home',chat:null,msgs:[],busy:false};
+  photos:[],step:'login',pw:false,confirmDel:null,showPhone:{},imgIdx:0,from:'home',chat:null,msgs:[],busy:false,reportOpen:null,reported:{},adminConfirm:null,reports:[]};
 var pollT=null;
 
 /* ---------- أدوات ---------- */
@@ -340,6 +346,7 @@ async function startSession(u){
   var p=await sb.from('profiles').select('username,phone,created_at,avatar_url').eq('id',u.id).single();
   if(p.error||!p.data){await sb.auth.signOut(); S.user=null; return render();}
   S.user={id:u.id,username:p.data.username,phone:p.data.phone,avatar:p.data.avatar_url||'',since:Date.parse(p.data.created_at)};
+  try{ var ia=await sb.rpc('is_admin'); S.user.admin=(ia&&ia.data===true); }catch(e){ S.user.admin=false; }
   loadingView('جاري تحميل الإعلانات...');
   await refresh();
   S.view='home'; render();
@@ -356,6 +363,7 @@ function render(){
     case 'chats': return renderChats();
     case 'chat': return renderChat();
     case 'profile': return renderProfile();
+    case 'admin': return renderAdmin();
     default: S.view='home'; return renderHome();
   }
 }
@@ -441,6 +449,17 @@ function renderFavs(){
    +(r.length?r.map(cardHTML).join(''):'<div class="empty">'+ic('heart')+'<b>ماكو شي بالمفضلة</b><span>اضغط على القلب بأي إعلان حتى تحفظه هنا.</span></div>')+'</div>');
 }
 
+function reportUI(l,mine){
+  if(mine) return '';
+  if(S.reportOpen===l.id){
+    return '<div class="panel"><h2>إبلاغ عن الإعلان</h2>'
+     +'<div class="field"><label for="rreason">السبب</label><select id="rreason"><option value="scam">احتيال أو نصب</option><option value="prohibited">غرض ممنوع أو مخالف</option><option value="fake">سعر أو صور غير حقيقية</option><option value="dup">إعلان مكرر</option><option value="other">سبب آخر</option></select></div>'
+     +'<div class="field"><label for="rnote">تفاصيل (اختياري)</label><textarea id="rnote" maxlength="300" style="min-height:80px"></textarea></div>'
+     +'<div class="acts"><button class="btn sm danger" data-act="report2" data-id="'+l.id+'">إرسال البلاغ</button><button class="btn sm" data-act="reportno">إلغاء</button></div></div>';
+  }
+  if(S.reported[l.id]) return '<div class="hint" style="text-align:center;margin-bottom:14px">وصل بلاغك، شكراً لك.</div>';
+  return '<div style="text-align:center;margin-bottom:14px"><button class="btn sm" data-act="report" data-id="'+l.id+'">'+ic('flag')+'إبلاغ عن الإعلان</button></div>';
+}
 function renderDetail(){
   var l=getL(S.detail); if(!l){return go('home');}
   var c=cat(l.cat), mine=l.mine;
@@ -468,6 +487,7 @@ function renderDetail(){
    +(l.desc?'<div class="panel"><h2>الوصف</h2><p>'+esc(l.desc)+'</p></div>':'')
    +'<div class="panel"><div class="seller"><div class="avatar">'+avInner(l.seller,l.avatar)+'</div><div><b>@'+esc(l.seller)+'</b><div class="hint">'+esc(l.gov)+'</div></div></div>'+phoneBlock+'</div>'
    +own
+   +reportUI(l,mine)
    +'<div class="panel"><h2>نصائح للبيع والشراء بأمان</h2><ul class="safe">'
    +'<li>'+ic('check')+'<span>ادفع عند الاستلام بعد ما تفحص الغرض.</span></li>'
    +'<li>'+ic('check')+'<span>قابل البائع بمكان عام ومزدحم.</span></li>'
@@ -605,14 +625,47 @@ async function sendMsg(txt){
   },3500);}
 }
 
+var REASONS={scam:'احتيال أو نصب',prohibited:'غرض ممنوع أو مخالف',fake:'سعر أو صور غير حقيقية',dup:'إعلان مكرر',other:'سبب آخر'};
+async function loadReports(){
+  var r=await sb.from('reports').select('listing_id,listing_title,reason,note,created_at').order('created_at',{ascending:false}).limit(300);
+  if(r.error) throw r.error;
+  var g={},order=[];
+  r.data.forEach(function(x){
+    if(!g[x.listing_id]){g[x.listing_id]={id:x.listing_id,title:x.listing_title||'—',n:0,reasons:{},notes:[]};order.push(x.listing_id);}
+    var o=g[x.listing_id]; o.n++; o.reasons[x.reason]=1; if(x.note&&o.notes.length<3) o.notes.push(x.note);
+  });
+  S.reports=order.map(function(k){return g[k];});
+}
+function renderAdmin(){
+  if(!S.user||!S.user.admin) return go('profile');
+  loadingView();
+  loadReports().then(function(){ if(S.view==='admin') drawAdmin(); })
+   .catch(function(e){ if(S.view==='admin'){toast(netErr(e)); S.reports=[]; drawAdmin();} });
+}
+function drawAdmin(){
+  mount('<div class="pagehead"><button class="iconbtn" data-act="tab" data-v="profile" aria-label="رجوع">'+ic('back')+'</button><h1>لوحة الإدارة</h1></div>'
+   +'<div class="hint" style="margin-bottom:10px">إعلانات عليها بلاغات ('+S.reports.length+')</div><div class="list">'
+   +(S.reports.length?S.reports.map(function(g){
+      var live=getL(g.id);
+      return '<div class="panel" style="margin:0"><b>'+esc(g.title)+'</b>'
+       +'<div class="hint">'+g.n+' بلاغ · '+Object.keys(g.reasons).map(function(k){return esc(REASONS[k]||k);}).join('، ')+'</div>'
+       +g.notes.map(function(n){return '<p class="hint" style="margin-top:4px">«'+esc(n)+'»</p>';}).join('')
+       +'<div class="acts">'
+       +(live?'<button class="btn sm" data-act="open" data-id="'+esc(g.id)+'">فتح الإعلان</button>':'<span class="hint">الإعلان محذوف</span>')
+       +(live?(S.adminConfirm===g.id?'<button class="btn sm danger" data-act="adel2" data-id="'+esc(g.id)+'">تأكيد الحذف</button><button class="btn sm" data-act="adelno">إلغاء</button>':'<button class="btn sm danger" data-act="adel" data-id="'+esc(g.id)+'">حذف الإعلان</button>'):'')
+       +'<button class="btn sm" data-act="adismiss" data-id="'+esc(g.id)+'">تجاهل البلاغات</button></div></div>';
+    }).join(''):'<div class="empty">'+ic('check')+'<b>ماكو بلاغات</b></div>')+'</div>');
+}
+
 function renderProfile(){
   var mine=S.listings.filter(function(l){return l.mine;});
   mount('<div class="pagehead"><h1>حسابي</h1></div>'
    +'<div class="profile"><button class="avatar" data-act="pickav" aria-label="تغيير الصورة الشخصية">'+avInner(S.user.username,S.user.avatar)+'<span class="cam">'+ic('camera')+'</span></button><div><b>@'+esc(S.user.username)+'</b><div class="hint" dir="ltr" style="text-align:right">+964 '+esc(fmtPhone(S.user.phone).slice(1))+'</div></div></div>'
    +'<input id="fileav" type="file" accept="image/*" hidden>'
+   +'<button class="sharerow" data-act="shareapp"><span class="ci">'+ic('share')+'</span><b>شارك التطبيق</b></button>'
    +'<div class="h2">إعلاناتي ('+mine.length+')</div><div class="list">'
    +(mine.length?mine.map(function(l){return '<button class="li" data-act="open" data-id="'+l.id+'">'+art(l)+'<div class="mid"><b>'+esc(l.title)+'</b><span>'+money(l.price)+' د.ع'+(l.sold?' · انباع':'')+'</span></div>'+ic('back')+'</button>';}).join(''):'<div class="empty">'+ic('tag')+'<b>ما نشرت أي إعلان</b><button class="btn primary" data-act="goadd">أضف أول إعلان</button></div>')
-   +'</div><div style="margin-top:22px"><button class="btn block danger" data-act="logout">تسجيل الخروج</button></div>');
+   +'</div><div style="margin-top:22px">'+(S.user.admin?'<button class="btn block" data-act="admin" style="margin-bottom:10px">'+ic('flag')+'لوحة الإدارة</button>':'')+'<button class="btn block danger" data-act="logout">تسجيل الخروج</button></div>');
 }
 
 function renderNav(){
@@ -654,7 +707,7 @@ document.addEventListener('click',async function(e){
   }
   try{
   switch(a){
-    case 'open': if(S.view!=='detail'&&S.view!=='chat') S.from=S.view; S.detail=id; S.imgIdx=0; S.confirmDel=null; go('detail'); break;
+    case 'open': if(S.view!=='detail'&&S.view!=='chat') S.from=S.view; S.detail=id; S.imgIdx=0; S.confirmDel=null; S.reportOpen=null; go('detail'); break;
     case 'back':
       if(S.view==='chat') go(S.from==='chats'?'chats':'detail');
       else go(S.from&&S.from!=='detail'&&S.from!=='chat'?S.from:'home');
@@ -681,6 +734,35 @@ document.addEventListener('click',async function(e){
       S.msgs=[]; S.chat={convId:c.id,listing:c.listing,other:c.other}; S.from='chats'; go('chat'); break;
     case 'pick': $('#file').click(); break;
     case 'pickav': $('#fileav').click(); break;
+    case 'shareapp':
+      var su=location.origin+location.pathname.replace(/index\.html$/,'');
+      var sd={title:'سلعتي',text:'سلعتي: بيع واشتري بين العراقيين',url:su};
+      if(navigator.share){ try{ await navigator.share(sd); }catch(x){} }
+      else { try{ await navigator.clipboard.writeText(su); toast('تم نسخ رابط التطبيق'); }catch(x){ toast(su); } }
+      break;
+    case 'admin': go('admin'); break;
+    case 'adel': S.adminConfirm=id; drawAdmin(); break;
+    case 'adelno': S.adminConfirm=null; drawAdmin(); break;
+    case 'adel2':
+      el.disabled=true;
+      var ad=await sb.from('listings').delete().eq('id',id).select('id');
+      if(ad.error) throw ad.error;
+      if(!ad.data||!ad.data.length) throw new Error('ما عندك صلاحية حذف هذا الإعلان');
+      await sb.from('reports').delete().eq('listing_id',id);
+      S.listings=S.listings.filter(function(x){return x.id!==id;}); S.adminConfirm=null;
+      await loadReports(); drawAdmin(); toast('تم حذف الإعلان'); break;
+    case 'adismiss':
+      el.disabled=true;
+      var ds=await sb.from('reports').delete().eq('listing_id',id).select('listing_id');
+      if(ds.error) throw ds.error;
+      await loadReports(); drawAdmin(); toast('تم تجاهل البلاغات'); break;
+    case 'report': S.reportOpen=id; renderDetail(); break;
+    case 'reportno': S.reportOpen=null; renderDetail(); break;
+    case 'report2':
+      var rl=getL(id); el.disabled=true;
+      var rr=await sb.from('reports').insert({listing_id:String(id),listing_title:rl?rl.title:'',reporter_id:S.user.id,reason:$('#rreason').value,note:$('#rnote').value.trim()});
+      if(rr.error && rr.error.code!=='23505') throw rr.error;
+      S.reported[id]=true; S.reportOpen=null; renderDetail(); toast('وصل بلاغك، شكراً لك'); break;
     case 'rmph': S.photos.splice(+el.getAttribute('data-i'),1); renderPhotos(); break;
     case 'sold':
       var l=getL(id); if(!l) break;
